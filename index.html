@@ -15,7 +15,7 @@
   .grid { display: grid; gap: 16px; }
   @media (min-width: 880px){ .grid-cols-2 { grid-template-columns: 1fr 1fr; } }
   label { display:block; font-size: 13px; color: var(--muted); margin: 10px 0 6px; }
-  input[type="text"], textarea, input[type="file"] {
+  input[type="text"], input[type="email"], input[type="password"], textarea, input[type="file"] {
     width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #283348; background: #0b1220; color: var(--text);
     outline: none;
   }
@@ -45,6 +45,8 @@
   .pill { font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid #2a3448; color:#9fb1d6; }
   .progress { height: 8px; width: 100%; background:#0b1220; border:1px solid #283348; border-radius: 999px; overflow: hidden; margin-top:8px; }
   .bar { height: 100%; width: 0%; background: #22c55e; }
+  .rightHead { display:flex; gap:10px; align-items:center; justify-content: flex-end; }
+  .badge { font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid #2a3448; color:#a7f3d0; background:#0b1220;}
 </style>
 </head>
 <body>
@@ -53,39 +55,62 @@
     <div class="sub">Play, search, and manage your MP3 files — stored in <strong>Firebase</strong>.</div>
 
     <div class="grid grid-cols-2">
-      <!-- Upload / Form -->
+      <!-- LEFT: Upload OR Login -->
       <div class="card">
-        <h2 style="margin:0 0 8px;">Add an Audio</h2>
-        <div class="muted" style="margin-bottom:12px;">Fill details and choose an <b>.mp3</b> file.</div>
-
-        <label>Title</label>
-        <input id="title" type="text" placeholder="e.g., Meeting notes – Aug 14" />
-
-        <label>Description</label>
-        <textarea id="description" placeholder="Short notes about this audio..."></textarea>
-
-        <label>Tags (comma-separated)</label>
-        <input id="tags" type="text" placeholder="e.g., work, idea, guitar" />
-
-        <label>MP3 file</label>
-        <input id="file" type="file" accept="audio/mpeg" />
-
-        <div class="row" style="margin-top:14px;">
-          <button id="saveBtn" class="btn btn-primary">Save Audio</button>
-          <button id="resetBtn" class="btn">Reset</button>
+        <!-- LOGIN PANEL -->
+        <div id="loginCard">
+          <h2 style="margin:0 0 8px;">Sign in</h2>
+          <div class="muted" style="margin-bottom:12px;">Only authenticated users can add audio.</div>
+          <label>Email</label>
+          <input id="email" type="email" placeholder="you@example.com" autocomplete="username" />
+          <label>Password</label>
+          <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+          <div class="row" style="margin-top:14px;">
+            <button id="loginBtn" class="btn btn-primary">Login</button>
+          </div>
+          <div id="loginMsg" class="muted" style="margin-top:10px;"></div>
         </div>
-        <div id="progressWrap" class="progress" style="display:none;"><div id="progressBar" class="bar"></div></div>
-        <div id="formMsg" class="muted" style="margin-top:10px;"></div>
+
+        <!-- UPLOAD PANEL -->
+        <div id="uploadCard" style="display:none;">
+          <div class="rightHead" style="justify-content:space-between;">
+            <h2 style="margin:0;">Add an Audio</h2>
+            <div>
+              <span id="who" class="badge"></span>
+              <button id="logoutBtn" class="btn" title="Logout">Logout</button>
+            </div>
+          </div>
+          <div class="muted" style="margin:8px 0 12px;">Fill details and choose an <b>.mp3</b> file.</div>
+
+          <label>Title</label>
+          <input id="title" type="text" placeholder="e.g., Meeting notes – Aug 14" />
+
+          <label>Description</label>
+          <textarea id="description" placeholder="Short notes about this audio..."></textarea>
+
+          <label>Tags (comma-separated)</label>
+          <input id="tags" type="text" placeholder="e.g., work, idea, guitar" />
+
+          <label>MP3 file</label>
+          <input id="file" type="file" accept="audio/mpeg" />
+
+          <div class="row" style="margin-top:14px;">
+            <button id="saveBtn" class="btn btn-primary">Save Audio</button>
+            <button id="resetBtn" class="btn">Reset</button>
+          </div>
+          <div id="progressWrap" class="progress" style="display:none;"><div id="progressBar" class="bar"></div></div>
+          <div id="formMsg" class="muted" style="margin-top:10px;"></div>
+        </div>
       </div>
 
-      <!-- Library / Controls -->
+      <!-- RIGHT: Library / Controls -->
       <div class="card">
         <div class="topbar">
           <input id="search" class="search" type="text" placeholder="Search title / description / tag..." />
           <div class="pill"><span id="count" class="count">0</span> saved</div>
         </div>
         <div id="list" class="list"></div>
-        <div id="empty" class="empty" style="display:none;">No audios yet. Add your first MP3 on the left.</div>
+        <div id="empty" class="empty" style="display:none;">No audios yet.</div>
       </div>
     </div>
   </div>
@@ -93,16 +118,17 @@
 <!-- Firebase SDKs -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
-  /* ===== 1) Firebase config ===== */
-   const firebaseConfig = {
+  /* ===== 1) Firebase config =====
+     Use the same config you already have working. */
+  const firebaseConfig = {
     apiKey: "AIzaSyAUFWHJZZavkC58q4hVAesY3rDSHAjaIu8",
     authDomain: "audio-library-a2357.firebaseapp.com",
     projectId: "audio-library-a2357",
-    storageBucket: "audio-library-a2357.firebasestorage.app",
+    storageBucket: "audio-library-a2357.appspot.com",
     messagingSenderId: "676784490363",
     appId: "1:676784490363:web:08c8f38794a73cc8729fde"
   };
@@ -113,24 +139,39 @@
   const db = getFirestore(app);
   const storage = getStorage(app);
 
-  // Sign in anonymously so rules requiring auth will pass
-  signInAnonymously(auth).catch(console.error);
-
   /* ===== 3) DOM ===== */
   const els = {
+    // login
+    loginCard: document.getElementById('loginCard'),
+    email: document.getElementById('email'),
+    password: document.getElementById('password'),
+    loginBtn: document.getElementById('loginBtn'),
+    loginMsg: document.getElementById('loginMsg'),
+    logoutBtn: document.getElementById('logoutBtn'),
+    who: document.getElementById('who'),
+    // upload
+    uploadCard: document.getElementById('uploadCard'),
     title: document.getElementById('title'),
     description: document.getElementById('description'),
     tags: document.getElementById('tags'),
     file: document.getElementById('file'),
     saveBtn: document.getElementById('saveBtn'),
     resetBtn: document.getElementById('resetBtn'),
+    progressWrap: document.getElementById('progressWrap'),
+    progressBar: document.getElementById('progressBar'),
+    formMsg: document.getElementById('formMsg'),
+    // list
     list: document.getElementById('list'),
     empty: document.getElementById('empty'),
     count: document.getElementById('count'),
-    formMsg: document.getElementById('formMsg'),
     search: document.getElementById('search'),
-    progressWrap: document.getElementById('progressWrap'),
-    progressBar: document.getElementById('progressBar'),
+  };
+
+  const showLogin = () => { els.loginCard.style.display = 'block'; els.uploadCard.style.display = 'none'; };
+  const showUpload = (user) => {
+    els.loginCard.style.display = 'none';
+    els.uploadCard.style.display = 'block';
+    els.who.textContent = user?.email ? user.email : user?.uid;
   };
 
   function formReset() {
@@ -149,12 +190,7 @@
   }
 
   const tagsToArray = (s) => (s || '').split(',').map(t => t.trim()).filter(Boolean);
-
-  function matchQuery(rec, q) {
-    if (!q) return true;
-    const hay = (rec.title + '\n' + rec.description + '\n' + (rec.tags || []).join(',')).toLowerCase();
-    return hay.includes(q.toLowerCase());
-  }
+  const matchQuery = (rec, q) => !q ? true : (rec.title + '\n' + rec.description + '\n' + (rec.tags||[]).join(',')).toLowerCase().includes(q.toLowerCase());
 
   let cache = [];
   function renderList(recs, query='') {
@@ -222,38 +258,52 @@
     }
   }
 
-  async function refresh() {
-    // fetch docs ordered by createdAt desc (serverTimestamp-safe)
-    const q = query(collection(db, 'audios'), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    cache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderList(cache, els.search.value.trim());
+  // Realtime list for everyone (reads allowed to public in rules below)
+  function startListener() {
+    const qy = query(collection(db, 'audios'), orderBy('createdAt', 'desc'));
+    return onSnapshot(qy, (snap) => {
+      cache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderList(cache, els.search.value.trim());
+    }, (err) => console.error('onSnapshot error:', err));
   }
+  let stop = startListener();
 
-  // Save/upload
+  // Login / Logout
+  els.loginBtn.addEventListener('click', async () => {
+    els.loginMsg.textContent = 'Signing in…';
+    els.loginMsg.style.color = '#94a3b8';
+    try {
+      await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value);
+      els.loginMsg.textContent = 'Signed in.';
+    } catch (e) {
+      console.error(e);
+      els.loginMsg.textContent = e.code ? `${e.code}: ${e.message}` : String(e);
+      els.loginMsg.style.color = '#fecaca';
+    }
+  });
+  els.logoutBtn.addEventListener('click', async () => { await signOut(auth); });
+
+  // Upload (guarded)
   els.saveBtn.addEventListener('click', async () => {
+    const user = auth.currentUser;
+    if (!user) { toast('Please login first.', false); return; }
+
     const title = els.title.value.trim();
     const description = els.description.value.trim();
     const tags = tagsToArray(els.tags.value);
     const file = els.file.files?.[0];
 
     if (!file) { toast('Please choose an MP3 file.', false); return; }
-    if (title.length === 0) { toast('Please enter a title.', false); return; }
-
-    // Basic type check (server-side rules enforce this too)
-    if (file.type && !file.type.startsWith('audio/')) {
-      toast('File must be an audio file (mp3).', false); return;
-    }
+    if (!title) { toast('Please enter a title.', false); return; }
+    if (file.type && !file.type.startsWith('audio/')) { toast('File must be an audio file (mp3).', false); return; }
 
     try {
       els.progressWrap.style.display = 'block';
       els.progressBar.style.width = '0%';
       toast('Uploading...');
 
-      // Storage path: audios/<uid or anon>/<timestamp>-<random>.mp3
-      const user = auth.currentUser;
-      const uid = user ? user.uid : 'anonymous';
-      const id = (crypto?.randomUUID?.() || (Date.now() + '-' + Math.random().toString(36).slice(2)));
+      const uid = user.uid;
+      const id = crypto?.randomUUID?.() || (Date.now() + '-' + Math.random().toString(36).slice(2));
       const path = `audios/${uid}/${id}.mp3`;
       const storageRef = ref(storage, path);
 
@@ -263,14 +313,11 @@
         els.progressBar.style.width = pct.toFixed(2) + '%';
       });
 
-      await task; // wait for upload
+      await task;
       const downloadURL = await getDownloadURL(storageRef);
 
-      // Save Firestore metadata
       await addDoc(collection(db, 'audios'), {
-        title,
-        description,
-        tags,
+        title, description, tags,
         storagePath: path,
         sizeBytes: file.size,
         sizeMB: file.size / 1024 / 1024,
@@ -282,17 +329,20 @@
 
       toast('Saved!');
       formReset();
-      await refresh();
     } catch (e) {
       console.error(e);
-      toast('Upload failed. Check Firebase config/rules.', false);
+      toast(`Upload failed: ${e.code || ''} ${e.message || e}`, false);
     }
   });
 
   els.resetBtn.addEventListener('click', formReset);
   els.search.addEventListener('input', () => renderList(cache, els.search.value.trim()));
 
-  onAuthStateChanged(auth, async () => { await refresh(); });
+  // Auth-driven UI toggle
+  onAuthStateChanged(auth, (user) => {
+    if (user) showUpload(user);
+    else showLogin();
+  });
 </script>
 </body>
 </html>
