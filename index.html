@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>My Audio Library (Firebase)</title>
+<style>
+  :root { --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --text:#e5e7eb; --accent:#22c55e; --chip:#1f2937; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; background: linear-gradient(180deg, #0b1222, #0a0f1a 60%, #090e19); color:var(--text); }
+  .container { max-width: 1100px; margin: 32px auto; padding: 0 16px; }
+  h1 { font-weight: 800; letter-spacing: .3px; margin: 0 0 8px; }
+  .sub { color:var(--muted); margin-bottom: 24px; }
+  .card { background: rgba(17,24,39,.7); backdrop-filter: blur(6px); border: 1px solid #1f2937; border-radius: 16px; padding: 16px; box-shadow: 0 6px 30px rgba(0,0,0,.35); }
+  .grid { display: grid; gap: 16px; }
+  @media (min-width: 880px){ .grid-cols-2 { grid-template-columns: 1fr 1fr; } }
+  label { display:block; font-size: 13px; color: var(--muted); margin: 10px 0 6px; }
+  input[type="text"], textarea, input[type="file"] {
+    width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #283348; background: #0b1220; color: var(--text);
+    outline: none;
+  }
+  textarea { resize: vertical; min-height: 72px; }
+  .row { display:flex; gap: 10px; align-items:center; }
+  .row > * { flex: 1; }
+  .btn {
+    padding: 10px 14px; border-radius: 12px; border: 1px solid #2a3448; background: #0c1626; color: var(--text);
+    cursor: pointer; transition: .15s transform ease, .15s background ease, .15s border ease;
+  }
+  .btn:hover { transform: translateY(-1px); border-color:#334155; background:#0e1a2e; }
+  .btn-primary { background: linear-gradient(180deg, #22c55e, #16a34a); border-color: #16a34a; color:#06210f; font-weight: 700; }
+  .list { margin-top: 16px; display: grid; gap: 12px; }
+  .item { display:grid; gap: 10px; grid-template-columns: 1fr; padding: 14px; border:1px solid #1f2937; border-radius: 14px; background:#0c1323; }
+  @media (min-width: 720px) { .item { grid-template-columns: 2fr 1fr; align-items: center; } }
+  .title { font-weight: 700; margin:0; }
+  .desc { color: var(--muted); margin: 4px 0 8px; white-space: pre-wrap; }
+  .tags { display:flex; gap:6px; flex-wrap: wrap; }
+  .tag { font-size:12px; padding: 4px 8px; border-radius: 999px; background: var(--chip); border: 1px solid #253046; color:#9db2d1; }
+  .actions { display:flex; gap: 8px; justify-content:flex-end; }
+  .topbar { display:flex; gap: 10px; align-items:center; justify-content: space-between; margin: 18px 0 8px; flex-wrap: wrap; }
+  .search { flex:1; min-width: 260px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .empty { text-align:center; padding: 28px; color: var(--muted); border:1px dashed #22304a; border-radius: 14px; background: #0b1220; }
+  .count { font-weight: 700; color:#a7f3d0; }
+  .audio { width: 100%; }
+  .pill { font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid #2a3448; color:#9fb1d6; }
+  .progress { height: 8px; width: 100%; background:#0b1220; border:1px solid #283348; border-radius: 999px; overflow: hidden; margin-top:8px; }
+  .bar { height: 100%; width: 0%; background: #22c55e; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>My Audio Library</h1>
+    <div class="sub">Play, search, and manage your MP3 files — stored in <strong>Firebase</strong>.</div>
+
+    <div class="grid grid-cols-2">
+      <!-- Upload / Form -->
+      <div class="card">
+        <h2 style="margin:0 0 8px;">Add an Audio</h2>
+        <div class="muted" style="margin-bottom:12px;">Fill details and choose an <b>.mp3</b> file.</div>
+
+        <label>Title</label>
+        <input id="title" type="text" placeholder="e.g., Meeting notes – Aug 14" />
+
+        <label>Description</label>
+        <textarea id="description" placeholder="Short notes about this audio..."></textarea>
+
+        <label>Tags (comma-separated)</label>
+        <input id="tags" type="text" placeholder="e.g., work, idea, guitar" />
+
+        <label>MP3 file</label>
+        <input id="file" type="file" accept="audio/mpeg" />
+
+        <div class="row" style="margin-top:14px;">
+          <button id="saveBtn" class="btn btn-primary">Save Audio</button>
+          <button id="resetBtn" class="btn">Reset</button>
+        </div>
+        <div id="progressWrap" class="progress" style="display:none;"><div id="progressBar" class="bar"></div></div>
+        <div id="formMsg" class="muted" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Library / Controls -->
+      <div class="card">
+        <div class="topbar">
+          <input id="search" class="search" type="text" placeholder="Search title / description / tag..." />
+          <div class="pill"><span id="count" class="count">0</span> saved</div>
+        </div>
+        <div id="list" class="list"></div>
+        <div id="empty" class="empty" style="display:none;">No audios yet. Add your first MP3 on the left.</div>
+      </div>
+    </div>
+  </div>
+
+<!-- Firebase SDKs -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+
+  /* ===== 1) Firebase config ===== */
+   const firebaseConfig = {
+    apiKey: "AIzaSyAUFWHJZZavkC58q4hVAesY3rDSHAjaIu8",
+    authDomain: "audio-library-a2357.firebaseapp.com",
+    projectId: "audio-library-a2357",
+    storageBucket: "audio-library-a2357.firebasestorage.app",
+    messagingSenderId: "676784490363",
+    appId: "1:676784490363:web:08c8f38794a73cc8729fde"
+  };
+
+  /* ===== 2) Init ===== */
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const storage = getStorage(app);
+
+  // Sign in anonymously so rules requiring auth will pass
+  signInAnonymously(auth).catch(console.error);
+
+  /* ===== 3) DOM ===== */
+  const els = {
+    title: document.getElementById('title'),
+    description: document.getElementById('description'),
+    tags: document.getElementById('tags'),
+    file: document.getElementById('file'),
+    saveBtn: document.getElementById('saveBtn'),
+    resetBtn: document.getElementById('resetBtn'),
+    list: document.getElementById('list'),
+    empty: document.getElementById('empty'),
+    count: document.getElementById('count'),
+    formMsg: document.getElementById('formMsg'),
+    search: document.getElementById('search'),
+    progressWrap: document.getElementById('progressWrap'),
+    progressBar: document.getElementById('progressBar'),
+  };
+
+  function formReset() {
+    els.title.value = '';
+    els.description.value = '';
+    els.tags.value = '';
+    els.file.value = '';
+    els.formMsg.textContent = '';
+    els.progressWrap.style.display = 'none';
+    els.progressBar.style.width = '0%';
+  }
+
+  function toast(msg, ok=true) {
+    els.formMsg.textContent = msg;
+    els.formMsg.style.color = ok ? '#86efac' : '#fecaca';
+  }
+
+  const tagsToArray = (s) => (s || '').split(',').map(t => t.trim()).filter(Boolean);
+
+  function matchQuery(rec, q) {
+    if (!q) return true;
+    const hay = (rec.title + '\n' + rec.description + '\n' + (rec.tags || []).join(',')).toLowerCase();
+    return hay.includes(q.toLowerCase());
+  }
+
+  let cache = [];
+  function renderList(recs, query='') {
+    els.list.innerHTML = '';
+    const filtered = recs.filter(r => matchQuery(r, query));
+    els.count.textContent = filtered.length;
+    els.empty.style.display = filtered.length ? 'none' : 'block';
+
+    for (const r of filtered) {
+      const item = document.createElement('div');
+      item.className = 'item';
+
+      const left = document.createElement('div');
+      const right = document.createElement('div');
+
+      const title = document.createElement('h3');
+      title.className = 'title';
+      title.textContent = r.title || '(Untitled)';
+
+      const desc = document.createElement('div');
+      desc.className = 'desc';
+      desc.textContent = r.description || '';
+
+      const tagsWrap = document.createElement('div');
+      tagsWrap.className = 'tags';
+      (r.tags || []).forEach(t => {
+        const chip = document.createElement('span');
+        chip.className = 'tag';
+        chip.textContent = t;
+        tagsWrap.appendChild(chip);
+      });
+
+      const meta = document.createElement('div');
+      meta.className = 'muted';
+      const dateStr = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString() : '';
+      const sizeStr = r.sizeMB ? `${r.sizeMB.toFixed(2)} MB` : '';
+      meta.textContent = `Saved: ${dateStr}${sizeStr ? ' • ' + sizeStr : ''}`;
+
+      left.appendChild(title);
+      left.appendChild(desc);
+      left.appendChild(tagsWrap);
+      left.appendChild(meta);
+
+      const audio = document.createElement('audio');
+      audio.className = 'audio';
+      audio.controls = true;
+      audio.src = r.downloadURL;
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+
+      const dl = document.createElement('a');
+      dl.className = 'btn';
+      dl.href = r.downloadURL;
+      dl.download = (r.title || 'audio') + '.mp3';
+      dl.textContent = 'Download';
+
+      actions.appendChild(dl);
+      right.appendChild(audio);
+      right.appendChild(actions);
+
+      item.appendChild(left);
+      item.appendChild(right);
+      els.list.appendChild(item);
+    }
+  }
+
+  async function refresh() {
+    // fetch docs ordered by createdAt desc (serverTimestamp-safe)
+    const q = query(collection(db, 'audios'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    cache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderList(cache, els.search.value.trim());
+  }
+
+  // Save/upload
+  els.saveBtn.addEventListener('click', async () => {
+    const title = els.title.value.trim();
+    const description = els.description.value.trim();
+    const tags = tagsToArray(els.tags.value);
+    const file = els.file.files?.[0];
+
+    if (!file) { toast('Please choose an MP3 file.', false); return; }
+    if (title.length === 0) { toast('Please enter a title.', false); return; }
+
+    // Basic type check (server-side rules enforce this too)
+    if (file.type && !file.type.startsWith('audio/')) {
+      toast('File must be an audio file (mp3).', false); return;
+    }
+
+    try {
+      els.progressWrap.style.display = 'block';
+      els.progressBar.style.width = '0%';
+      toast('Uploading...');
+
+      // Storage path: audios/<uid or anon>/<timestamp>-<random>.mp3
+      const user = auth.currentUser;
+      const uid = user ? user.uid : 'anonymous';
+      const id = (crypto?.randomUUID?.() || (Date.now() + '-' + Math.random().toString(36).slice(2)));
+      const path = `audios/${uid}/${id}.mp3`;
+      const storageRef = ref(storage, path);
+
+      const task = uploadBytesResumable(storageRef, file, { contentType: file.type || 'audio/mpeg' });
+      task.on('state_changed', (snap) => {
+        const pct = (snap.bytesTransferred / snap.totalBytes) * 100;
+        els.progressBar.style.width = pct.toFixed(2) + '%';
+      });
+
+      await task; // wait for upload
+      const downloadURL = await getDownloadURL(storageRef);
+
+      // Save Firestore metadata
+      await addDoc(collection(db, 'audios'), {
+        title,
+        description,
+        tags,
+        storagePath: path,
+        sizeBytes: file.size,
+        sizeMB: file.size / 1024 / 1024,
+        contentType: file.type || 'audio/mpeg',
+        downloadURL,
+        createdAt: serverTimestamp(),
+        uid
+      });
+
+      toast('Saved!');
+      formReset();
+      await refresh();
+    } catch (e) {
+      console.error(e);
+      toast('Upload failed. Check Firebase config/rules.', false);
+    }
+  });
+
+  els.resetBtn.addEventListener('click', formReset);
+  els.search.addEventListener('input', () => renderList(cache, els.search.value.trim()));
+
+  onAuthStateChanged(auth, async () => { await refresh(); });
+</script>
+</body>
+</html>
